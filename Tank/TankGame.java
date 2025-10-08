@@ -124,7 +124,7 @@ class TankGameWindow {
 class TankPanel extends JPanel implements ActionListener {
     public static final int WIDTH = 800, HEIGHT = 600, STREET = 80, WALL_THICK = 20;
 
-    private final List<Wall> walls = MapGenerator.generateMap();
+    private List<Wall> walls;
     private final Tank tank1, tank2;
     private final Timer timer = new Timer(16, this);
     private String winner = null;
@@ -144,18 +144,18 @@ class TankPanel extends JPanel implements ActionListener {
         setPreferredSize(new Dimension(WIDTH, HEIGHT));
         setBackground(Color.LIGHT_GRAY);
         setFocusable(true);
-
+        walls = MapGenerator.generateMap();
         Point p1 = findSpawn(null);
         Rectangle r1 = new Rectangle(p1.x, p1.y, 30, 30);
         Point p2 = findSpawn(r1);
 
         tank1 = new Tank(p1.x, p1.y, Color.RED, walls,
-                KeyEvent.VK_W, KeyEvent.VK_S, KeyEvent.VK_A, KeyEvent.VK_D,
-                KeyEvent.VK_SPACE, "RED");
+        KeyEvent.VK_W, KeyEvent.VK_S, KeyEvent.VK_A, KeyEvent.VK_D,
+        KeyEvent.VK_F, "RED");          // 红坦克 F 开火
 
         tank2 = new Tank(p2.x, p2.y, Color.BLUE, walls,
-                KeyEvent.VK_UP, KeyEvent.VK_DOWN, KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT,
-                KeyEvent.VK_NUMPAD0, "BLUE");
+        KeyEvent.VK_UP, KeyEvent.VK_DOWN, KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT,
+        KeyEvent.VK_L, "BLUE");         // 蓝坦克 L 开火
 
         addKeyListener(new KeyAdapter() {
             public void keyPressed(KeyEvent e) {
@@ -252,16 +252,25 @@ class TankPanel extends JPanel implements ActionListener {
     }
 
     private void restart() {
-        winner = null;
-        waitingRestart = false;
-        Point p1 = findSpawn(null);
-        Rectangle r1 = new Rectangle(p1.x, p1.y, 30, 30);
-        Point p2 = findSpawn(r1);
-        tank1.reset(p1.x, p1.y);
-        tank2.reset(p2.x, p2.y);
-        tank1.bullets.clear();
-        tank2.bullets.clear();
-    }
+    winner = null;
+    waitingRestart = false;
+
+    /* 全新随机地图 */
+    walls = MapGenerator.generateMap();
+
+    /* 重新找出生点 */
+    Point p1 = findSpawn(null);
+    Rectangle r1 = new Rectangle(p1.x, p1.y, Tank.SIZE, Tank.SIZE);
+    Point p2 = findSpawn(r1);
+
+    /* 重置坦克并传入新地图 */
+    tank1.reset(p1.x, p1.y);
+    tank2.reset(p2.x, p2.y);
+    tank1.bullets.clear();
+    tank2.bullets.clear();
+    tank1.setWalls(walls);   // 关键：让坦克引用新墙列表
+    tank2.setWalls(walls);
+}
 
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
@@ -290,6 +299,8 @@ class TankPanel extends JPanel implements ActionListener {
 
 /* =========================  Tank  ===================== */
 class Tank {
+    void setWalls(List<Wall> newWalls) { this.walls = newWalls; }
+    public static final int SIZE = 30;
     int x, y, spd = 3, size = 30;
     private int upK, dnK, ltK, rtK, fireK;
     private boolean up, dn, lt, rt, fire;
@@ -300,7 +311,7 @@ class Tank {
     boolean alive = true;
     private long lastFire = 0;
     private static final int CD = 300;
-    private final List<Wall> walls;
+    private List<Wall> walls;
 
     Tank(int x, int y, Color color, List<Wall> walls,
          int upK, int dnK, int ltK, int rtK, int fireK, String id) {
@@ -400,7 +411,7 @@ class Tank {
 /* =========================  Bullet  ===================== */
 class Bullet {
     private int x, y, dx, dy;
-    private int life = 6;
+    private int life = 9;
     private int birth = 2;
     private static final int R = 4;
 
@@ -440,12 +451,22 @@ class MapGenerator {
     static List<Wall> generateMap() {
         List<Wall> walls = new ArrayList<>();
         int W = TankPanel.WIDTH, H = TankPanel.HEIGHT;
-        int t = TankPanel.STREET, cols = 8, rows = 6;
-        int cw = (W - 2 * t) / cols, ch = (H - 2 * t) / rows;
-        int[] X = new int[cols + 1], Y = new int[rows + 1];
+        int t = TankPanel.STREET;
+
+        /* ===== 1. 随机行列（大小） ===== */
+        Random rnd = new Random();
+        int cols = 6 + rnd.nextInt(5);   // 6~10
+        int rows = 4 + rnd.nextInt(4);   // 4~7
+
+        /* ===== 2. 重新计算单元格尺寸 ===== */
+        int cw = (W - 2 * t) / cols;
+        int ch = (H - 2 * t) / rows;
+        int[] X = new int[cols + 1];
+        int[] Y = new int[rows + 1];
         for (int i = 0; i <= cols; i++) X[i] = t + i * cw;
         for (int j = 0; j <= rows; j++) Y[j] = t + j * ch;
 
+        /* ===== 3. 后面与原流程完全相同 ===== */
         boolean[][] v = new boolean[cols + 1][rows];
         boolean[][] h = new boolean[cols][rows + 1];
         for (int i = 0; i <= cols; i++) java.util.Arrays.fill(v[i], true);
@@ -455,8 +476,8 @@ class MapGenerator {
         int sx1 = 1, sy1 = 1, sx2 = cols - 2, sy2 = rows - 2;
         vis[sx1][sy1] = vis[sx2][sy2] = true;
         Stack<int[]> s = new Stack<>();
-        s.push(new int[]{sx1, sy1}); s.push(new int[]{sx2, sy2});
-        Random r = new Random();
+        s.push(new int[]{sx1, sy1});
+        s.push(new int[]{sx2, sy2});
         int[][] d = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         while (!s.isEmpty()) {
             int[] cur = s.peek();
@@ -467,16 +488,33 @@ class MapGenerator {
                     nbrs.add(new int[]{nx, ny});
             }
             if (!nbrs.isEmpty()) {
-                int[] nb = nbrs.get(r.nextInt(nbrs.size()));
+                int[] nb = nbrs.get(rnd.nextInt(nbrs.size()));
                 int nx = nb[0], ny = nb[1];
                 if (nx == cur[0] + 1) v[cur[0] + 1][cur[1]] = false;
                 else if (nx == cur[0] - 1) v[cur[0]][cur[1]] = false;
                 else if (ny == cur[1] + 1) h[cur[0]][cur[1] + 1] = false;
                 else if (ny == cur[1] - 1) h[cur[0]][cur[1]] = false;
-                vis[nx][ny] = true; s.push(nb);
+                vis[nx][ny] = true;
+                s.push(nb);
             } else s.pop();
         }
 
+        /* ===== 4. 额外拆墙 ===== */
+        int extraPaths = (cols * rows) / 8;
+        for (int i = 0; i < extraPaths; i++) {
+            boolean vertical = rnd.nextBoolean();
+            if (vertical) {
+                int ix = 1 + rnd.nextInt(cols - 1);
+                int jy = 1 + rnd.nextInt(rows - 1);
+                if (v[ix][jy]) v[ix][jy] = false;
+            } else {
+                int ix = 1 + rnd.nextInt(cols - 1);
+                int jy = 1 + rnd.nextInt(rows - 1);
+                if (h[ix][jy]) h[ix][jy] = false;
+            }
+        }
+
+        /* ===== 5. 建墙 ===== */
         int hf = TankPanel.WALL_THICK / 2;
         for (int i = 0; i < cols; i++)
             for (int j = 0; j <= rows; j++)
@@ -487,10 +525,12 @@ class MapGenerator {
                 if (v[i][j]) walls.add(new Wall(X[i] - hf, Y[j] - hf,
                         TankPanel.WALL_THICK, Y[j + 1] - Y[j] + TankPanel.WALL_THICK));
 
+        /* ===== 6. 边界 ===== */
         walls.add(new Wall(0, 0, W, TankPanel.WALL_THICK));
         walls.add(new Wall(0, H - TankPanel.WALL_THICK, W, TankPanel.WALL_THICK));
         walls.add(new Wall(0, 0, TankPanel.WALL_THICK, H));
         walls.add(new Wall(W - TankPanel.WALL_THICK, 0, TankPanel.WALL_THICK, H));
+
         return walls;
     }
 }
